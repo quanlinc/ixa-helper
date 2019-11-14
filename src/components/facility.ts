@@ -1,65 +1,66 @@
-import { post } from '@/utils/io'
-
+import { getHtml, post } from '@/utils/io'
+import { isNil } from 'ramda'
 /**
  * Modeling facility, mainly focus on unit training ones as others don't have much to do with them but upgrading
  */
 
-// Define unit and their corresponding code
-const ALL_UNIT = {
-    足軽: '321',
-    長槍足軽: '322',
-    武士: '323',
-    弓足軽: '325',
-    長弓兵: '326',
-    弓騎馬: '327',
-    騎馬兵: '329',
-    精鋭騎馬: '330',
-    赤備え: '331',
-    破城鎚: '333',
-    攻城櫓: '334',
-    穴太衆: '335',
-    大筒兵: '',
-    鉄砲足軽: '336',
-    騎馬鉄砲: '',
-    焙烙火矢: '',
+const YARI:{[key:string]: string} = {
+    '321': '足軽',
+    '322': '長槍足軽',
+    '323': '武士',
+    '321_322': '足軽->長槍足軽',
+    '321_323': '足軽->武士',
+    '322_323': '長槍足軽->武士',
 }
 
-const YARI = {
-    足軽: '321',
-    長槍足軽: '322',
-    武士: '323',
+const YUMI:{[key:string]: string} = {
+    '325': '弓足軽',
+    '326': '長弓兵',
+    '327': '弓騎馬',
+    '325_326': '弓足軽->長弓兵',
+    '325_327': '弓足軽->弓騎馬',
+    '326_327': '長弓兵->弓騎馬',
 }
 
-const YUMI = {
-    弓足軽: '325',
-    長弓兵: '326',
-    弓騎馬: '327',
+const KIBA:{[key:string]: string} = {
+    '329': '騎馬兵',
+    '330': '精鋭騎馬',
+    '331': '赤備え',
+    '329_330': '騎馬兵->精鋭騎馬',
+    '329_331': '騎馬兵->赤備え',
+    '330_331': '精鋭騎馬->赤備え',
 }
 
-const KIBA = {
-    騎馬兵: '329',
-    精鋭騎馬: '330',
-    赤備え: '331',
-}
-
-const KAJI: {[key: string]: string} = {
-    破城鎚: '333',
-    攻城櫓: '334',
-    穴太衆: '335',
-    大筒兵: '',
-    鉄砲足軽: '336',
-    騎馬鉄砲: '',
-    焙烙火矢: '',
+const KAJI:{[key:string]: string} = {
+    '333': '破城鎚',
+    '334': '攻城櫓',
+    '335': '大筒兵',
+    '336': '鉄砲足軽',
+    '337': '騎馬鉄砲',
+    '345': '焙烙火矢',
+    '346': '穴太衆',
+    '333_334': '破城鎚->攻城櫓',
+    '333_346': '破城鎚->穴太衆',
+    '333_335': '破城鎚->大筒兵',
+    '334_346': '攻城櫓->穴太衆',
+    '334_335': '攻城櫓->大筒兵',
+    '346_335': '穴太衆->大筒兵'
 } as const
 
+// Define unit and their corresponding code
+const ALL_UNITS: {[key: string]: string} = {
+    ...YARI, ...YUMI, ...KIBA, ...KAJI,
+}
+
 export enum UNIT_CATEGORY {
-    YARI, YUMI, KIBA, KAJI
+    NO_SELECT, YARI, YUMI, KIBA, KAJI,
 }
 
 export enum TRAINING_MODE {
-    NORMAL, HIGH_SPEED, UPGRADE,
+    NORMAL, HIGH, UPGRADE,
 }
 
+// Request Payload definition
 interface UnitTraining {
     x: string,
     y: string,
@@ -80,13 +81,24 @@ class Facility {
     public x: string | null = null
     public y: string | null = null
     public title: string | null = null
-//    public villageId: string | null = null
-    private postEndpoint: URL | null = null
+    private postEndpoint: URL
 
+    // constructor should explicitly have fields defined, cannot be nested in a subroutine,
+    // which applies to postEndpoint here
     constructor(el: HTMLElement) {
         this.dom = el as HTMLAreaElement
         this.title = this.dom.title
-        this.parseLink(this.dom.href)
+        this.postEndpoint = new URL(this.dom.href, document.location.href.slice(0, location.href.lastIndexOf('/')))
+        this.x = this.postEndpoint.searchParams.get('x')
+        this.y = this.postEndpoint.searchParams.get('y')
+    }
+
+    // simple say if coordinate information is available, we should be able to get the facility
+    public isAvailable() {
+        if (isNil(this.x) || isNil(this.y) ) {
+            return false
+        }
+        return true
     }
 
     public trainUnit(quantity: string, trainingMode: TRAINING_MODE, toUnitId: string, fromUnitId?: string ) {
@@ -94,7 +106,7 @@ class Facility {
             case TRAINING_MODE.NORMAL:
                 this.normalTraining(quantity, toUnitId)
                 break
-            case TRAINING_MODE.HIGH_SPEED:
+            case TRAINING_MODE.HIGH:
                 this.speedTraining(quantity, toUnitId)
                 break
             case TRAINING_MODE.UPGRADE:
@@ -105,13 +117,8 @@ class Facility {
         }
     }
 
-    /*
-     * Use URL object to access the search parameters in order to extract coordinate info
-     */
-    private parseLink(path: string) {
-        this.postEndpoint = new URL(path, document.location.href.slice(0, location.href.lastIndexOf('/')))
-        this.x = this.postEndpoint.searchParams.get('x')
-        this.y = this.postEndpoint.searchParams.get('y')
+    public async getUnitInfo(): Promise<Document> {
+        return  await getHtml(this.postEndpoint.href)
     }
 
     /* Need to append the hash here to distinguish training mode
@@ -130,7 +137,7 @@ class Facility {
 
     private speedTraining(quantity: string, toUnitId: string) {
         if (this.postEndpoint) {
-            const requestPayload = this.constructRequestPayload(quantity, TRAINING_MODE.HIGH_SPEED, toUnitId)
+            const requestPayload = this.constructRequestPayload(quantity, TRAINING_MODE.HIGH, toUnitId)
             const url = this.postEndpoint.href.concat('#tab2')
             return post(url, requestPayload)
         }
@@ -159,22 +166,12 @@ class Facility {
 
         payload.append('unit_id', toUnitId)
         payload.append('count', quantity)
-        // const payload =  {
-        //     x: this.x,
-        //     y: this.y,
-        //     unit_id: toUnitId,
-        //     count: quantity,
-        // } as UnitTraining
 
         switch (trainingMode) {
-            case TRAINING_MODE.HIGH_SPEED:
-                // payload.high_speed = '1'
+            case TRAINING_MODE.HIGH:
                 payload.append('high_speed', '1')
                 break
             case TRAINING_MODE.UPGRADE:
-                // payload.upgrade = '1'
-                // payload.from = fromUnitId
-                // payload.to = toUnitId
                 payload.append('upgrade', '1')
                 if (fromUnitId) {
                     payload.append('from', fromUnitId)
@@ -183,7 +180,6 @@ class Facility {
                 break
             default:
         }
-
         return payload
     }
 }
@@ -194,4 +190,5 @@ export {
     YUMI,
     KIBA,
     KAJI,
+    ALL_UNITS,
 }

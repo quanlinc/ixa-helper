@@ -1,25 +1,15 @@
-export const get = (url: string, data?: BodyInit): Promise<Document> =>
-    new Promise((resolve: CallableFunction, reject: CallableFunction) => {
-    return fetch(url, {
-        method: 'GET',
-        body: data,
-    }).then(response => response.text())
-        .then(html => {
-            const parser = new DOMParser()
-            const doc = parser.parseFromString(html, 'text/html')
-            return resolve(doc)
-        }).catch(error => {
-            return reject('Failed to fetch page', error)
-        })
-})
+import {compose, then} from 'ramda'
 
-export const post = (url: string, data: BodyInit): Promise<Response> =>
-    new Promise<Response>((resolve: CallableFunction) => {
-    return fetch(url, {
+// **NOTE**  don't write .catch of fetch block in this file. please use try...catch block in async function
+// Request with GET/HEAD cannot have body
+export const get = (url: string): Promise<Response> => fetch(url, {
+        method: 'GET',
+    })
+
+export const post = (url: string, data: BodyInit): Promise<Response> => fetch(url, {
         method: 'POST',
         body: data,
     })
-})
 
 export const updateDom = (method: VoidFunction): Promise<void> => new Promise((resolve: CallableFunction) => {
     try {
@@ -31,6 +21,9 @@ export const updateDom = (method: VoidFunction): Promise<void> => new Promise((r
     }
 })
 
-const changeName = (vid: number, newName: string): Promise<boolean> => new Promise((resolve: CallableFunction) => {
-    return
-})
+const htmlParser = (txt: string) => (new DOMParser()).parseFromString(txt, 'text/html')
+
+// export const getText = compose((pr: Promise<Response>) => pr.then(resp => resp.text()), get)
+export const getText = compose(then(resp => resp.text()), get)
+// export const getHtml = compose((pt: Promise<string>) => pt.then(htmlParser), getText)
+export const getHtml = compose(then(htmlParser), getText)
